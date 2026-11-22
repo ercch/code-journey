@@ -31,8 +31,8 @@ against the repository source:
   diffs, collection mutations, and runtime or syntax errors.
 - Supported loop metadata includes `for`, `while`, nested loops, iteration
   boundaries, and known totals when they can be established from source.
-- Safe condition previews show short-circuit evaluation order for supported
-  `and`/`or` operands, including expressions Python skips.
+- Safe condition previews show short-circuit evaluation order for supported and/or operands, including expressions Python skips.
+- Supported conditional statments metadata will be visualized and have the evaluated expression, subsitutes values, and whether the condition evaluates to True or False
 - Shared object identity is rendered as alias links rather than inferred from
   equal values.
 - The HTML view is CSS-only and is intended to work in notebook renderers that
