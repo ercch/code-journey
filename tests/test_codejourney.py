@@ -179,7 +179,8 @@ def test_cell_magic_captures_stepwise_stdout_in_top_output_card(capsys):
     assert normal_output == ""
     output_card = '<section class="cj-output-card" aria-label="Output">'
     assert output_card in rendered
-    assert rendered.index(output_card) < rendered.index('<div class="cj-controls"')
+    assert rendered.index('<div class="cj-timeline"') < rendered.index(output_card)
+    assert rendered.index(output_card) < rendered.index('<div class="cj-layout">')
     assert "class=\"cj-output-state\" data-output-index=\"0\"" in rendered
     assert "first\nsecond\n" in rendered
     assert ".codejourney .cj-output-card" in rendered
@@ -640,9 +641,9 @@ def test_html_has_variables_and_object_boxes_for_python_objects():
     assert "items" in rendered
     assert "alias" in rendered
     assert '<span class="cj-object-type">list</span>' in rendered
-    assert '<th scope="col">Index</th><th scope="col">Value</th>' in rendered
-    assert '<th scope="row">0</th><td>1</td>' in rendered
-    assert '<th scope="row">1</th><td>2</td>' in rendered
+    assert '<th scope="col">Index</th><th scope="col" class="cj-value-column">Value</th>' in rendered
+    assert '<th scope="row">0</th><td class="cj-value-column">1</td>' in rendered
+    assert '<th scope="row">1</th><td class="cj-value-column">2</td>' in rendered
 
 
 def test_list_dictionary_and_set_objects_render_as_typed_tables():
@@ -663,15 +664,15 @@ def test_list_dictionary_and_set_objects_render_as_typed_tables():
     set_card = next(card for card in cards if 'cj-object-type">set<' in card)
 
     assert '<h4>Object 1</h4><span class="cj-object-type">list</span>' in list_card
-    assert '<th scope="col">Index</th><th scope="col">Value</th>' in list_card
-    assert '<th scope="row">0</th><td>1</td>' in list_card
-    assert '<th scope="row">1</th><td>print()</td>' in list_card
-    assert '<th scope="col">Key</th><th scope="col">Value</th>' in dict_card
-    assert "<th scope=\"row\">'a'</th><td>1</td>" in dict_card
-    assert "<th scope=\"row\">'b'</th><td>2</td>" in dict_card
-    assert '<th scope="col">Value</th>' in set_card
-    assert "<td>8</td>" in set_card
-    assert "<td>9</td>" in set_card
+    assert '<th scope="col">Index</th><th scope="col" class="cj-value-column">Value</th>' in list_card
+    assert '<th scope="row">0</th><td class="cj-value-column">1</td>' in list_card
+    assert '<th scope="row">1</th><td class="cj-value-column">print()</td>' in list_card
+    assert '<th scope="col">Key</th><th scope="col" class="cj-value-column">Value</th>' in dict_card
+    assert "<th scope=\"row\">'a'</th><td class=\"cj-value-column\">1</td>" in dict_card
+    assert "<th scope=\"row\">'b'</th><td class=\"cj-value-column\">2</td>" in dict_card
+    assert '<th scope="col" class="cj-value-column">Value</th>' in set_card
+    assert '<td class="cj-value-column">8</td>' in set_card
+    assert '<td class="cj-value-column">9</td>' in set_card
     assert "Index" not in set_card
     assert not any(bracket in set_card for bracket in "{}[]")
     assert not any(bracket in list_card for bracket in "[]")
@@ -696,6 +697,34 @@ def test_visualizer_sections_keep_light_surfaces_and_dark_text():
     assert ".codejourney .cj-scalar" in rendered
     assert ".codejourney .cj-warning" in rendered
     assert ".codejourney .cj-error" in rendered
+
+
+def test_output_is_above_source_variables_and_outer_container_is_light_blue():
+    rendered = run_viz("print('hello')\nanswer = 42\n")._repr_html_()
+
+    output_card = rendered.index('<section class="cj-output-card" aria-label="Output">')
+    source_panel = rendered.index('<section class="cj-panel"><h3>Source</h3>')
+    variables_panel = rendered.index("<h3>Variables</h3>")
+
+    assert output_card < source_panel
+    assert output_card < variables_panel
+    assert ".codejourney { background: #eef5ff !important;" in rendered
+    assert "background: #eef5ff" in rendered
+
+
+def test_object_table_value_columns_are_theme_locked():
+    rendered = run_viz(
+        "items = [1, 2]\n"
+        "data = {'a': 3}\n"
+        "unique = {4, 5}\n"
+    )._repr_html_()
+
+    assert '<th scope="col" class="cj-value-column">Value</th>' in rendered
+    assert '<td class="cj-value-column">' in rendered
+    assert ".codejourney .cj-object-table .cj-value-column" in rendered
+    assert "background: #fff !important" in rendered
+    assert "color: #172033 !important" in rendered
+    assert "border: 1px solid #cbd5e1 !important" in rendered
 
 
 def test_collection_values_render_vertically_with_type_appropriate_labels():

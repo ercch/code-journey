@@ -101,7 +101,13 @@ def _collection_table(value: Any) -> Optional[str]:
         return None
 
     header_html = "".join(
-        f'<th scope="col">{heading}</th>' for heading in headings
+        (
+            '<th scope="col" class="cj-value-column">'
+            f"{heading}</th>"
+            if heading == "Value"
+            else f'<th scope="col">{heading}</th>'
+        )
+        for heading in headings
     )
     row_html = []
     for row in rows:
@@ -112,7 +118,8 @@ def _collection_table(value: Any) -> Optional[str]:
         )
         values = row[1:] if has_row_heading else row
         cells += "".join(
-            f"<td>{_object_value_html(item)}</td>" for item in values
+            f'<td class="cj-value-column">{_object_value_html(item)}</td>'
+            for item in values
         )
         row_html.append(f"<tr>{cells}</tr>")
     return (
@@ -560,43 +567,43 @@ def render_html(result: TraceResult) -> str:
 
     return f"""<div class="codejourney {scope}">
 <style>
-.codejourney {{ font: 14px/1.45 system-ui, sans-serif; color: #172033; background: #fff; color-scheme: light; border: 1px solid #d5dbe6; border-radius: 10px; padding: 14px; }}
+.codejourney {{ font: 14px/1.45 system-ui, sans-serif; color: #172033; background: #eef5ff; color-scheme: light; border: 1px solid #d5dbe6; border-radius: 8px; padding: 8px; }}
 .codejourney * {{ box-sizing: border-box; }}
 .cj-selector {{ position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }}
-.cj-output-card {{ margin: 0 0 12px; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; color: #172033; color-scheme: light; }}
-.cj-output-card h3 {{ margin: 0 0 8px; color: #172033; font-size: 14px; }}
+.cj-output-card {{ margin: 0 0 6px; padding: 7px 9px; border: 1px solid #cbd5e1; border-radius: 7px; background: #fff; color: #172033; color-scheme: light; }}
+.cj-output-card h3 {{ margin: 0 0 5px; color: #172033; font-size: 14px; }}
 .cj-output-state {{ display: none; }}
-.cj-output-card pre {{ max-height: 260px; overflow: auto; margin: 0; padding: 9px 10px; border: 1px solid #dbe2ea; border-radius: 5px; background: #f8fafc !important; color: #172033 !important; white-space: pre-wrap; overflow-wrap: anywhere; }}
+.cj-output-card pre {{ max-height: 180px; overflow: auto; margin: 0; padding: 5px 7px; border: 1px solid #dbe2ea; border-radius: 5px; background: #f8fafc !important; color: #172033 !important; white-space: pre-wrap; overflow-wrap: anywhere; }}
 .cj-output-empty {{ margin: 0; color: #475569; }}
-.cj-controls {{ display: none; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; }}
-.cj-button {{ border: 1px solid #aeb8c8; background: #f7f9fc; border-radius: 6px; padding: 6px 10px; cursor: pointer; color: inherit; }}
+.cj-controls {{ display: none; flex-wrap: wrap; align-items: center; gap: 5px; margin-bottom: 5px; }}
+.cj-button {{ border: 1px solid #aeb8c8; background: #f7f9fc; border-radius: 6px; padding: 4px 8px; cursor: pointer; color: inherit; }}
 .cj-button:hover {{ background: #e9eff8; }}
 .cj-disabled {{ opacity: .5; cursor: default; }}
 .cj-counter {{ margin-left: auto; color: #657187; font-size: 12px; }}
-.cj-timeline {{ display: flex; gap: 4px; overflow-x: auto; padding: 5px 0 11px; }}
-.cj-tick {{ flex: 0 0 auto; min-width: 24px; padding: 2px 6px; border-radius: 999px; background: #e8edf5; color: #34445c; text-align: center; cursor: pointer; font-size: 12px; }}
+.cj-timeline {{ display: flex; gap: 3px; overflow-x: auto; padding: 3px 0 6px; }}
+.cj-tick {{ flex: 0 0 auto; min-width: 24px; padding: 1px 5px; border-radius: 999px; background: #e8edf5; color: #34445c; text-align: center; cursor: pointer; font-size: 12px; }}
 .cj-view {{ display: none; }}
-.cj-layout {{ display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, .8fr); gap: 12px; }}
-.cj-panel {{ min-width: 0; border: 1px solid #e1e5ec; border-radius: 8px; padding: 10px; }}
-.cj-panel h3 {{ font-size: 14px; margin: 0 0 8px; }}
-.cj-panel h3:not(:first-child) {{ margin-top: 14px; }}
-.codejourney .cj-source {{ overflow: auto; margin: 0; background: #ffffff !important; color: #172033 !important; color-scheme: light; border-radius: 6px; padding: 8px; white-space: pre; }}
+.cj-layout {{ display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, .8fr); gap: 7px; }}
+.cj-panel {{ min-width: 0; border: 1px solid #e1e5ec; border-radius: 7px; padding: 7px; }}
+.cj-panel h3 {{ font-size: 14px; margin: 0 0 5px; }}
+.cj-panel h3:not(:first-child) {{ margin-top: 7px; }}
+.codejourney .cj-source {{ overflow: auto; margin: 0; background: #ffffff !important; color: #172033 !important; color-scheme: light; border-radius: 5px; padding: 5px; white-space: pre; }}
 .codejourney .cj-source code, .codejourney .cj-source-line {{ color: #172033 !important; }}
 .codejourney .cj-source-line {{ display: block; min-height: 1.45em; background-color: #ffffff; }}
 .codejourney .cj-source-line.cj-current {{ background: #fff0b3 !important; color: #172033 !important; outline: 1px solid #c49a18; }}
 .codejourney .cj-line-number {{ user-select: none; color: #5e6b7b !important; }}
-.cj-state {{ margin: 0 0 10px; }}
-.cj-badge {{ display: inline-block; background: #e8efff; border-radius: 999px; padding: 3px 9px; font-size: 12px; }}
+.cj-state {{ margin: 0 0 5px; }}
+.cj-badge {{ display: inline-block; background: #e8efff; border-radius: 999px; padding: 2px 7px; font-size: 12px; }}
 
 .cj-condition-card {{
-    margin: 12px 0;
-    padding: 16px;
+    margin: 6px 0;
+    padding: 8px;
     background: #f8fafc;
     border: 1px solid #cbd5e1;
     border-radius: 12px;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 5px;
 }}
 
 .cj-condition-heading {{
@@ -611,7 +618,7 @@ def render_html(result: TraceResult) -> str:
     font-size: 16px;
     font-weight: 600;
     color: #1e293b;
-    margin-bottom: 8px;
+    margin-bottom: 4px;
 }}
 
 .cj-condition-preview {{
@@ -619,13 +626,13 @@ def render_html(result: TraceResult) -> str:
     font-size: 13px;
     color: #475569;
     background: #e2e8f0;
-    padding: 9px 12px;
+    padding: 5px 8px;
     border-radius: 6px;
 }}
 
 .cj-condition-result {{
     align-self: flex-start;
-    padding: 6px 12px;
+    padding: 4px 8px;
     border-radius: 6px;
     font-weight: 700;
     font-size: 12px;
@@ -646,8 +653,8 @@ def render_html(result: TraceResult) -> str:
     color: #475569;
 }}
 
-.codejourney .cj-condition-steps {{ display: flex; flex-direction: column; gap: 6px; color-scheme: light; }}
-.codejourney .cj-condition-part {{ display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 6px; border: 1px solid #cbd5e1 !important; background: #ffffff !important; color: #1e293b !important; color-scheme: light; box-shadow: none !important; }}
+.codejourney .cj-condition-steps {{ display: flex; flex-direction: column; gap: 3px; color-scheme: light; }}
+.codejourney .cj-condition-part {{ display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 5px; padding: 5px 7px; border-radius: 5px; border: 1px solid #cbd5e1 !important; background: #ffffff !important; color: #1e293b !important; color-scheme: light; box-shadow: none !important; }}
 .codejourney .cj-condition-part code, .codejourney .cj-condition-part strong, .codejourney .cj-condition-part span {{ background: transparent !important; border: 0 !important; box-shadow: none !important; color: #1e293b !important; text-shadow: none !important; }}
 .codejourney .cj-condition-part code {{ overflow-wrap: anywhere; }}
 .codejourney .cj-condition-part strong {{ font-family: monospace; }}
@@ -656,24 +663,24 @@ def render_html(result: TraceResult) -> str:
 .codejourney .cj-condition-part-skipped {{ background: #f1f5f9 !important; border-left: 4px solid #64748b !important; color: #334155 !important; }}
 .codejourney .cj-condition-part-unknown {{ background: #fffbeb !important; border-left: 4px solid #d97706 !important; border-color: #fbbf24 !important; }}
 
-.cj-variables {{ display: flex; flex-direction: column; gap: 7px; }}
-.cj-variable {{ display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 7px 9px; background: #edf4ff; border: 1px solid #cfddf4; border-radius: 6px; }}
+.cj-variables {{ display: flex; flex-direction: column; gap: 4px; }}
+.cj-variable {{ display: flex; align-items: center; gap: 5px; flex-wrap: wrap; padding: 4px 7px; background: #edf4ff; border: 1px solid #cfddf4; border-radius: 5px; }}
 .cj-variable-name {{ font-weight: 650; }}
 .cj-pointer {{ color: #315fa8; font-weight: 700; text-decoration: none; }}
 .cj-pointer:hover {{ text-decoration: underline; }}
 .cj-alias {{ color: #657187; font-size: 12px; }}
 .cj-scalar {{ white-space: pre-wrap; overflow-wrap: anywhere; }}
-.cj-object {{ border: 1px solid #bdc9da; border-radius: 7px; padding: 8px 10px; background: #fff; margin: 7px 0 0 18px; scroll-margin: 8px; }}
-.cj-object-heading {{ display: flex; align-items: center; gap: 7px; margin: 0 0 7px; }}
+.cj-object {{ border: 1px solid #bdc9da; border-radius: 6px; padding: 5px 7px; background: #fff; margin: 4px 0 0 10px; scroll-margin: 5px; }}
+.cj-object-heading {{ display: flex; align-items: center; gap: 5px; margin: 0 0 4px; }}
 .cj-object h4 {{ font-size: 12px; color: #53647c; margin: 0; }}
 .cj-object-type {{ display: inline-block; border: 1px solid #cbd5e1; border-radius: 999px; padding: 1px 7px; background: #f1f5f9; color: #334155; font-size: 11px; }}
 .cj-object pre {{ margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }}
 .cj-object-table {{ width: 100%; border-collapse: collapse; table-layout: fixed; background: #fff; color: #172033; }}
-.cj-object-table th, .cj-object-table td {{ border: 1px solid #cbd5e1; padding: 5px 7px; text-align: left; vertical-align: top; overflow-wrap: anywhere; }}
+.cj-object-table th, .cj-object-table td {{ border: 1px solid #cbd5e1; padding: 3px 5px; text-align: left; vertical-align: top; overflow-wrap: anywhere; }}
 .cj-object-table thead th {{ background: #f1f5f9; color: #334155; font-weight: 650; }}
 .cj-object-table tbody th {{ width: 1%; white-space: nowrap; background: #f8fafc; color: #334155; font-weight: 550; }}
 .cj-object-table td {{ color: #172033; }}
-.cj-diff {{ border-left: 3px solid #6688c7; background: #f7f9fd; padding: 7px 9px; margin: 7px 0; border-radius: 4px; overflow-wrap: anywhere; }}
+.cj-diff {{ border-left: 3px solid #6688c7; background: #f7f9fd; padding: 4px 6px; margin: 4px 0; border-radius: 4px; overflow-wrap: anywhere; }}
 .cj-diff pre {{ margin: 4px 0 0; white-space: pre-wrap; }}
 .cj-warning {{ color: #684800; background: #fff6d8; border-radius: 5px; padding: 6px 8px; margin: 5px 0; }}
 .cj-error {{ color: #8d2020; background: #fde8e8; border-radius: 5px; padding: 6px 8px; margin: 5px 0; }}
@@ -704,6 +711,9 @@ def render_html(result: TraceResult) -> str:
 .codejourney .cj-object-type {{ background: #f1f5f9 !important; border: 1px solid #cbd5e1 !important; color: #334155 !important; color-scheme: light; }}
 .codejourney .cj-object-table {{ background: #fff !important; color: #172033 !important; color-scheme: light; }}
 .codejourney .cj-object-table th, .codejourney .cj-object-table td {{ border: 1px solid #cbd5e1 !important; color: #172033 !important; }}
+.codejourney .cj-object-table .cj-value-column {{ background: #fff !important; color: #172033 !important; border: 1px solid #cbd5e1 !important; color-scheme: light; }}
+.codejourney .cj-object-table .cj-value-column, .codejourney .cj-object-table .cj-value-column * {{ background: #fff !important; color: #172033 !important; border-color: #cbd5e1 !important; text-shadow: none !important; color-scheme: light; }}
+.codejourney {{ background: #eef5ff !important; color-scheme: light; }}
 .codejourney .cj-object-table thead th {{ background: #f1f5f9 !important; color: #334155 !important; }}
 .codejourney .cj-object-table tbody th {{ background: #f8fafc !important; color: #334155 !important; }}
 .codejourney .cj-diff {{ background: #f7f9fd !important; color: #172033 !important; border: 1px solid #d5dbe6 !important; border-left: 3px solid #6688c7 !important; color-scheme: light; }}
@@ -715,10 +725,10 @@ def render_html(result: TraceResult) -> str:
 {''.join(rules)}
 </style>
 {selector_html}
-{output_card_html}
 {empty_state_html}
 {controls_html}
 {timeline_html}
+{output_card_html}
 {views_html}
 <p class="cj-muted">Educational trace, not a debugger. Code ran with this Python process's permissions; execution is not sandboxed.</p>
 </div>"""

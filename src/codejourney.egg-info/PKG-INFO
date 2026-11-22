@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: codejourney
-Version: 0.2.1
+Version: 0.2.2
 Summary: Educational Python execution visualization for Jupyter notebooks
 Author: CS1302 Group 09
 License-Expression: MIT
@@ -41,8 +41,8 @@ against the repository source:
   diffs, collection mutations, and runtime or syntax errors.
 - Supported loop metadata includes `for`, `while`, nested loops, iteration
   boundaries, and known totals when they can be established from source.
-- Safe condition previews show short-circuit evaluation order for supported
-  `and`/`or` operands, including expressions Python skips.
+- Safe condition previews show short-circuit evaluation order for supported and/or operands, including expressions Python skips.
+- Supported conditional statments metadata will be visualized and have the evaluated expression, subsitutes values, and whether the condition evaluates to True or False
 - Shared object identity is rendered as alias links rather than inferred from
   equal values.
 - The HTML view is CSS-only and is intended to work in notebook renderers that
@@ -256,7 +256,7 @@ official release wording has not been provided here as a completed claim:
 
 ## Version
 
-Current release: 0.2.1
+Current release: 0.2.2
 
 ## Project links
 
