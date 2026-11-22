@@ -24,6 +24,18 @@ def test_run_viz_returns_structured_trace_for_code():
     assert "<!doctype html>" not in result._repr_html_().lower()
 
 
+def test_source_lines_jump_to_exact_or_nearest_execution_step():
+    rendered = run_viz("first = 1\nsecond = 2\nprint(second)\n")._repr_html_()
+
+    assert 'role="link" aria-label="Jump to line 1"' in rendered
+    assert 'title="Jump to nearest step for line 1"' in rendered
+    assert 'class="cj-source-line cj-current"' in rendered
+    assert 'class="cj-source-line"' in rendered
+    assert re.search(r'class="cj-source-line[^"]*"[^>]*for="[^"]+-step-\d+"', rendered)
+    assert "cursor: pointer" in rendered
+    assert ".codejourney .cj-source-line:hover" in rendered
+
+
 def test_run_viz_traces_function_calls_and_source_lines():
     result = run_viz("def add(a, b):\n    return a + b\n\nanswer = add(2, 3)\n")
 
@@ -218,8 +230,59 @@ def test_timeline_marks_final_state_as_end_and_keeps_navigation():
     assert ticks[-1] == "END"
     assert "aria-label=\"Go to END\" title=\"END\"" in rendered
     assert f"END / {len(ticks)}" in rendered
-    assert "Prev</label>" in rendered
-    assert "Next</label>" in rendered
+    assert "aria-label=\"First step\"" in rendered
+    assert "aria-label=\"Previous step\"" in rendered
+    assert "aria-label=\"Next step\"" in rendered
+    assert "aria-label=\"Last step\"" in rendered
+    assert "⏮" in rendered
+    assert "◄" in rendered
+    assert "►" in rendered
+    assert "⏭" in rendered
+    first = rendered.index("⏮")
+    previous = rendered.index("◄")
+    next_arrow = rendered.index("►")
+    last = rendered.index("⏭")
+    assert first < previous < next_arrow < last
+
+
+def test_objects_use_content_sized_wrapping_layout_and_compact_density():
+    rendered = run_viz(
+        "items = [1, 2]\n"
+        "data = {'a': 1}\n"
+    )._repr_html_()
+
+    assert "font: 13px/1.35" in rendered
+    assert "padding: 6px;" in rendered
+    assert "max-height: 120px" in rendered
+    assert "max-height: 360px" in rendered
+    assert ".cj-objects { display: flex;" in rendered
+    assert "flex-wrap: wrap" in rendered
+    assert "align-items: flex-start" in rendered
+    assert "gap: 8px" in rendered
+    assert ".cj-object { width: max-content;" in rendered
+    assert "max-width: 100%" in rendered
+    assert "box-sizing: border-box" in rendered
+    assert "table-layout: auto" in rendered
+    assert "white-space: nowrap" in rendered
+    assert ".cj-table-scroll { max-width: 100%; overflow-x: auto;" in rendered
+    assert '<div class="cj-table-scroll"><div class="cj-table-inner">' in rendered
+
+
+def test_lively_css_motion_is_lightweight_and_objects_stay_fade_only():
+    rendered = run_viz("items = [1]\nprint(items)\n")._repr_html_()
+
+    assert "@media (prefers-reduced-motion: no-preference)" in rendered
+    assert "@keyframes cj-object-fade" in rendered
+    assert "@keyframes cj-step-enter" in rendered
+    assert "@keyframes cj-soft-enter" in rendered
+    assert "@keyframes cj-pill-enter" in rendered
+    assert "animation:cj-step-enter 160ms ease-out both" in rendered
+    assert "animation:cj-soft-enter 160ms ease-out both" in rendered
+    assert "animation:cj-pill-enter 160ms ease-out both" in rendered
+    assert "animation: cj-object-fade 180ms ease-out both;" in rendered
+    assert "cj-object" in rendered
+    assert "<script>" not in rendered
+    assert "ResizeObserver" not in rendered
 
 
 def test_visualizer_initializes_at_step_one():
@@ -239,7 +302,8 @@ def test_visualizer_initializes_at_step_one():
         assert (
             f"#{selector_id}:checked ~ .cj-timeline label[for='{selector_id}']"
             "{background:#315fa8 !important;color:#fff !important;"
-            "border-color:#315fa8 !important}"
+            "border-color:#315fa8 !important;"
+            "animation:cj-pill-enter 160ms ease-out both}"
         ) in rendered
 
 
@@ -252,19 +316,15 @@ def test_visualizer_includes_reduced_motion_safe_step_and_reveal_animations():
     )._repr_html_()
 
     assert "@media (prefers-reduced-motion: no-preference)" in rendered
+    assert "@keyframes cj-object-fade" in rendered
     assert "@keyframes cj-step-enter" in rendered
-    assert "@keyframes cj-reveal" in rendered
-    assert "from { transform: translateX(6px); }" in rendered
-    assert "from { transform: translateY(3px) scale(.985); }" in rendered
-    assert "opacity: 0; transform: translateX" not in rendered
-    assert "opacity: 0; transform: translateY" not in rendered
-    assert "transform: translateX(6px)" in rendered
-    assert "transform: translateY(3px) scale(.985)" in rendered
-    assert "animation:cj-step-enter 180ms ease-out both" in rendered
-    assert ".cj-output-state pre" in rendered
-    assert ".cj-object-table tbody tr" in rendered
-    assert ".cj-diff" in rendered
-    assert ".cj-condition-part" in rendered
+    assert "@keyframes cj-reveal" not in rendered
+    assert "from { opacity: 0; }" in rendered
+    assert "to { opacity: 1; }" in rendered
+    assert ".cj-object {" in rendered
+    assert "animation: cj-object-fade 180ms ease-out both;" in rendered
+    assert ".cj-object {" in rendered
+    assert "cj-object-fade" in rendered
 
 
 def test_ast_analysis_extracts_loop_metadata_and_known_iteration_count():
@@ -601,6 +661,60 @@ def test_nested_loops_keep_iteration_context_for_each_loop():
     assert len(inner_groups) == 2
 
 
+def test_triple_nested_loops_track_depth_and_reset_inner_counters():
+    result = run_viz(
+        "total = 0\n"
+        "for outer in [1, 2]:\n"
+        "    for middle in [3, 4]:\n"
+        "        for inner in [5, 6]:\n"
+        "            total += outer + middle + inner\n"
+    )
+    body_events = [
+        event
+        for event in result.events
+        if event.line_number == 5 and len(event.loop_iterations) == 3
+    ]
+
+    assert body_events
+    assert all(
+        [item.depth for item in event.loop_iterations] == [0, 1, 2]
+        for event in body_events
+    )
+    combinations = [
+        tuple(item.iteration_index for item in event.loop_iterations)
+        for event in body_events
+    ]
+    assert (0, 0, 0) in combinations
+    assert (1, 0, 0) in combinations
+    assert (1, 1, 1) in combinations
+
+
+def test_deep_loop_stack_compacts_middle_levels_in_rendered_badge():
+    result = run_viz(
+        "total = 0\n"
+        "for a in [1, 2]:\n"
+        "    for b in [1, 2]:\n"
+        "        for c in [1, 2]:\n"
+        "            for d in [1, 2]:\n"
+        "                total += a + b + c + d\n"
+    )
+    rendered = result._repr_html_()
+
+    assert "cj-loop-stack" in rendered
+    assert "Iteration " in rendered
+    assert " → … → " in rendered
+    assert 'title="L2:' in rendered
+
+
+def test_aliases_do_not_append_to_iteration_badge():
+    result = run_viz("a = []\nb = a\nc = b\n")
+    rendered = result._repr_html_()
+    badges = re.findall(r'<span class="cj-badge[^"]*">(.*?)</span>', rendered)
+
+    assert all("Linked to" not in badge for badge in badges)
+    assert "Linked to a" in rendered
+
+
 def test_html_visualizer_uses_notebook_safe_controls_and_escapes_source():
     result = run_viz(
         "value = '<script>alert(1)</script>'\n"
@@ -640,7 +754,7 @@ def test_html_escapes_warning_and_error_text():
 
     assert "&lt;img src=x onerror=alert(1)&gt;" in rendered
     assert "<img src=x onerror=alert(1)>" not in rendered
-    assert "Educational trace, not a debugger" in rendered
+    assert "Educational trace, not a debugger" not in rendered
 
 
 def test_empty_source_still_renders_controls_and_empty_state():

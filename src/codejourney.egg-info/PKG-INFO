@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: codejourney
-Version: 0.2.2
+Version: 0.2.3
 Summary: Educational Python execution visualization for Jupyter notebooks
 Author: CS1302 Group 09
 License-Expression: MIT
@@ -256,7 +256,7 @@ official release wording has not been provided here as a completed claim:
 
 ## Version
 
-Current release: 0.2.2
+Current release: 0.2.3
 
 ## Project links
 

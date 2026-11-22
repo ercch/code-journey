@@ -246,7 +246,7 @@ official release wording has not been provided here as a completed claim:
 
 ## Version
 
-Current release: 0.2.2
+Current release: 0.2.3
 
 ## Project links
 

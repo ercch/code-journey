@@ -122,12 +122,17 @@ def _collection_table(value: Any) -> Optional[str]:
             for item in values
         )
         row_html.append(f"<tr>{cells}</tr>")
-    return (
+    table_html = (
         '<table class="cj-object-table"><thead><tr>'
         + header_html
         + "</tr></thead><tbody>"
         + "".join(row_html)
         + "</tbody></table>"
+    )
+    return (
+        '<div class="cj-table-scroll"><div class="cj-table-inner">'
+        + table_html
+        + "</div></div>"
     )
 
 
@@ -246,21 +251,74 @@ def _diffs_html(event: TraceEvent) -> str:
     return "\n".join(cards)
 
 
- 
+def _loop_stack_html(event: TraceEvent) -> str:
+    if not event.loop_iterations:
+        return ""
+
+    parts = []
+    for iteration in event.loop_iterations:
+        total = (
+            str(iteration.total_iterations)
+            if iteration.total_iterations is not None
+            else "?"
+        )
+        parts.append(
+            f"L{iteration.line_number}: "
+            f"{iteration.iteration_index + 1}/{total}"
+        )
+
+    full_path = " → ".join(parts)
+    compact_path = (
+        full_path
+        if len(parts) <= 3
+        else " → ".join((parts[0], "…", parts[-1]))
+    )
+
+    return (
+        '<span class="cj-badge cj-loop-stack" '
+        f'title="{html.escape(full_path, quote=True)}">'
+        f"Iteration {html.escape(compact_path)}</span>"
+    )
+
+
 def _view_html(
     result: TraceResult,
     event: TraceEvent,
     index: int,
     scope: str,
     show_error: bool,
+    events: tuple["TraceEvent", ...],
 ) -> str:
     source_lines = result.source.splitlines()
-    line_markup = "\n".join(
-        f'<span class="cj-source-line{" cj-current" if number == event.line_number else ""}">'
-        f'<span class="cj-line-number">{number:>3}</span> '
-        f"{html.escape(line)}</span>"
-        for number, line in enumerate(source_lines, start=1)
-    )
+    line_markup_parts = []
+    for number, line in enumerate(source_lines, start=1):
+        target_index = next(
+            (
+                candidate
+                for candidate, candidate_event in enumerate(events)
+                if candidate_event.line_number == number
+            ),
+            None,
+        )
+        if target_index is None:
+            target_index = min(
+                range(len(events)),
+                key=lambda candidate: abs(events[candidate].line_number - number),
+                default=None,
+            )
+        target_attribute = (
+            f' for="{scope}-step-{target_index}"'
+            if target_index is not None
+            else ""
+        )
+        line_markup_parts.append(
+            f'<label class="cj-source-line{" cj-current" if number == event.line_number else ""}"'
+            f'{target_attribute} role="link" aria-label="Jump to line {number}"'
+            f' title="Jump to nearest step for line {number}">'
+            f'<span class="cj-line-number">{number:>3}</span> '
+            f"{html.escape(line)}</label>"
+        )
+    line_markup = "\n".join(line_markup_parts)
     if not line_markup:
         line_markup = '<span class="cj-empty">No source lines.</span>'
 
@@ -277,10 +335,6 @@ def _view_html(
     if boundary is not None:
         total = boundary.total_iterations if boundary.total_iterations is not None else "?"
         iteration_text = f"Iteration {boundary.iteration_index + 1} of {total} · iteration begins"
-
-    aliases_text = "; ".join(alias.label for alias in event.aliases)
-    if aliases_text:
-        iteration_text += " · " + aliases_text
 
     condition_html = ""
 
@@ -363,7 +417,7 @@ def _view_html(
         )
 
     return f"""<section class="cj-view" data-index="{index}">
-  <div class="cj-state"><span class="cj-badge">{html.escape(iteration_text)}</span>{condition_html}</div>
+  <div class="cj-state">{_loop_stack_html(event)}{condition_html}</div>
   <div class="cj-layout">
     <section class="cj-panel"><h3>Source</h3><pre class="cj-source"><code>{line_markup}</code></pre></section>
     <section class="cj-panel">
@@ -471,6 +525,22 @@ def render_html(result: TraceResult) -> str:
                 "next-iteration": next_iteration,
             }
         )
+
+        def navigation_button(symbol: str, accessible_label: str, target: Optional[int]) -> str:
+            if target is None:
+                return (
+                    '<span class="cj-button cj-disabled" aria-disabled="true" '
+                    f'aria-label="{accessible_label}" title="{accessible_label}">{symbol}</span>'
+                )
+            return (
+                '<label class="cj-button" role="button" '
+                f'aria-label="{accessible_label}" title="{accessible_label}" '
+                f'for="{scope}-step-{target}">{symbol}</label>'
+            )
+
+        control_labels.append(
+            navigation_button("⏮", "First step", 0 if index > 0 else None)
+        )
         for action, label in (
             ("prev", "Prev"),
             ("next", "Next"),
@@ -479,15 +549,26 @@ def render_html(result: TraceResult) -> str:
             ("change", "Jump to Next Change"),
         ):
             target = targets[action]
+            if action == "prev":
+                label = '<span aria-hidden="true">◄</span>'
+                aria_label = 'aria-label="Previous step" title="Previous step"'
+            elif action == "next":
+                label = '<span aria-hidden="true">►</span>'
+                aria_label = 'aria-label="Next step" title="Next step"'
+            else:
+                aria_label = f'aria-label="{label}" title="{label}"'
             if target is None:
                 control_labels.append(
-                    f'<span class="cj-button cj-disabled" aria-disabled="true">{label}</span>'
+                    f'<span class="cj-button cj-disabled" aria-disabled="true" {aria_label}>{label}</span>'
                 )
             else:
                 control_labels.append(
-                    f'<label class="cj-button" role="button" for="{scope}-step-{target}">'
+                    f'<label class="cj-button" role="button" {aria_label} for="{scope}-step-{target}">'
                     f"{label}</label>"
                 )
+        control_labels.append(
+            navigation_button("⏭", "Last step", count - 1 if index < count - 1 else None)
+        )
         controls.append(
             f'<div class="cj-controls" data-step-controls="{index}">'
             + "".join(control_labels)
@@ -517,6 +598,7 @@ def render_html(result: TraceResult) -> str:
                 index,
                 scope,
                 error_index is not None and index >= error_index,
+                events,
             )
         )
 
@@ -529,15 +611,17 @@ def render_html(result: TraceResult) -> str:
         )
         rules.append(
             f"#{selector_id}:checked ~ .cj-output-card .cj-output-state[data-output-index='{index}']"
-            "{display:block;animation:cj-step-enter 180ms ease-out both}"
+            "{display:block;animation:cj-soft-enter 160ms ease-out both}"
         )
         rules.append(
             f"#{selector_id}:checked ~ .cj-views .cj-view[data-index='{index}']"
-            "{display:block;animation:cj-step-enter 180ms ease-out both}"
+            "{display:block;animation:cj-step-enter 160ms ease-out both}"
         )
         rules.append(
             f"#{selector_id}:checked ~ .cj-timeline label[for='{selector_id}']"
-            "{background:#315fa8 !important;color:#fff !important;border-color:#315fa8 !important}"
+            "{background:#315fa8 !important;color:#fff !important;"
+            "border-color:#315fa8 !important;"
+            "animation:cj-pill-enter 160ms ease-out both}"
         )
 
     if not events:
@@ -567,43 +651,46 @@ def render_html(result: TraceResult) -> str:
 
     return f"""<div class="codejourney {scope}">
 <style>
-.codejourney {{ font: 14px/1.45 system-ui, sans-serif; color: #172033; background: #eef5ff; color-scheme: light; border: 1px solid #d5dbe6; border-radius: 8px; padding: 8px; }}
+.codejourney {{ font: 13px/1.35 system-ui, sans-serif; color: #172033; background: #eef5ff; color-scheme: light; border: 1px solid #d5dbe6; border-radius: 8px; padding: 6px; }}
 .codejourney * {{ box-sizing: border-box; }}
 .cj-selector {{ position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }}
-.cj-output-card {{ margin: 0 0 6px; padding: 7px 9px; border: 1px solid #cbd5e1; border-radius: 7px; background: #fff; color: #172033; color-scheme: light; }}
-.cj-output-card h3 {{ margin: 0 0 5px; color: #172033; font-size: 14px; }}
+.cj-output-card {{ margin: 0 0 4px; padding: 5px 7px; border: 1px solid #cbd5e1; border-radius: 7px; background: #fff; color: #172033; color-scheme: light; }}
+.cj-output-card h3 {{ margin: 0 0 3px; color: #172033; font-size: 13px; }}
 .cj-output-state {{ display: none; }}
-.cj-output-card pre {{ max-height: 180px; overflow: auto; margin: 0; padding: 5px 7px; border: 1px solid #dbe2ea; border-radius: 5px; background: #f8fafc !important; color: #172033 !important; white-space: pre-wrap; overflow-wrap: anywhere; }}
+.cj-output-card pre {{ max-height: 120px; overflow: auto; margin: 0; padding: 3px 5px; border: 1px solid #dbe2ea; border-radius: 5px; background: #f8fafc !important; color: #172033 !important; white-space: pre-wrap; overflow-wrap: anywhere; }}
 .cj-output-empty {{ margin: 0; color: #475569; }}
-.cj-controls {{ display: none; flex-wrap: wrap; align-items: center; gap: 5px; margin-bottom: 5px; }}
-.cj-button {{ border: 1px solid #aeb8c8; background: #f7f9fc; border-radius: 6px; padding: 4px 8px; cursor: pointer; color: inherit; }}
+.cj-controls {{ display: none; flex-wrap: wrap; align-items: center; gap: 3px; margin-bottom: 3px; }}
+.cj-button {{ border: 1px solid #aeb8c8; background: #f7f9fc; border-radius: 6px; padding: 2px 7px; cursor: pointer; color: inherit; font-size: 12px; user-select: none; -webkit-user-select: none; }}
 .cj-button:hover {{ background: #e9eff8; }}
-.cj-disabled {{ opacity: .5; cursor: default; }}
+.cj-disabled, .cj-button[aria-disabled="true"], .cj-button:disabled {{ opacity: .18; background: transparent; border-color: transparent; cursor: default; pointer-events: none; user-select: none; -webkit-user-select: none; }}
 .cj-counter {{ margin-left: auto; color: #657187; font-size: 12px; }}
-.cj-timeline {{ display: flex; gap: 3px; overflow-x: auto; padding: 3px 0 6px; }}
+.cj-timeline {{ display: flex; gap: 2px; overflow-x: auto; padding: 2px 0 4px; }}
 .cj-tick {{ flex: 0 0 auto; min-width: 24px; padding: 1px 5px; border-radius: 999px; background: #e8edf5; color: #34445c; text-align: center; cursor: pointer; font-size: 12px; }}
 .cj-view {{ display: none; }}
-.cj-layout {{ display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, .8fr); gap: 7px; }}
-.cj-panel {{ min-width: 0; border: 1px solid #e1e5ec; border-radius: 7px; padding: 7px; }}
-.cj-panel h3 {{ font-size: 14px; margin: 0 0 5px; }}
-.cj-panel h3:not(:first-child) {{ margin-top: 7px; }}
-.codejourney .cj-source {{ overflow: auto; margin: 0; background: #ffffff !important; color: #172033 !important; color-scheme: light; border-radius: 5px; padding: 5px; white-space: pre; }}
+.cj-layout {{ display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, .8fr); gap: 5px; }}
+.cj-panel {{ min-width: 0; border: 1px solid #e1e5ec; border-radius: 7px; padding: 5px; }}
+.cj-panel h3 {{ font-size: 13px; margin: 0 0 3px; }}
+.cj-panel h3:not(:first-child) {{ margin-top: 5px; }}
+.codejourney .cj-source {{ max-height: 360px; overflow: auto; margin: 0; background: #ffffff !important; color: #172033 !important; color-scheme: light; border-radius: 5px; padding: 3px; white-space: pre; }}
 .codejourney .cj-source code, .codejourney .cj-source-line {{ color: #172033 !important; }}
-.codejourney .cj-source-line {{ display: block; min-height: 1.45em; background-color: #ffffff; }}
+.codejourney .cj-source-line {{ display: block; min-height: 1.45em; padding: 1px 3px; background-color: #ffffff; cursor: pointer; border-radius: 3px; user-select: none; -webkit-user-select: none; }}
+.codejourney .cj-source-line:hover {{ background: #edf4ff; outline: 1px solid #b7c6df; }}
+.codejourney .cj-source-line:focus-visible {{ outline: 2px solid #315fa8; }}
 .codejourney .cj-source-line.cj-current {{ background: #fff0b3 !important; color: #172033 !important; outline: 1px solid #c49a18; }}
 .codejourney .cj-line-number {{ user-select: none; color: #5e6b7b !important; }}
-.cj-state {{ margin: 0 0 5px; }}
+.cj-state {{ margin: 0 0 3px; }}
 .cj-badge {{ display: inline-block; background: #e8efff; border-radius: 999px; padding: 2px 7px; font-size: 12px; }}
+.cj-loop-stack {{ max-width: 100%; flex-wrap: wrap; overflow-wrap: anywhere; }}
 
 .cj-condition-card {{
-    margin: 6px 0;
-    padding: 8px;
+    margin: 3px 0;
+    padding: 5px;
     background: #f8fafc;
     border: 1px solid #cbd5e1;
     border-radius: 12px;
     display: flex;
     flex-direction: column;
-    gap: 5px;
+    gap: 3px;
 }}
 
 .cj-condition-heading {{
@@ -615,7 +702,7 @@ def render_html(result: TraceResult) -> str:
 
 .cj-condition-expression {{
     font-family: monospace;
-    font-size: 16px;
+    font-size: 14px;
     font-weight: 600;
     color: #1e293b;
     margin-bottom: 4px;
@@ -623,7 +710,7 @@ def render_html(result: TraceResult) -> str:
 
 .cj-condition-preview {{
     font-family: monospace;
-    font-size: 13px;
+    font-size: 12px;
     color: #475569;
     background: #e2e8f0;
     padding: 5px 8px;
@@ -663,21 +750,25 @@ def render_html(result: TraceResult) -> str:
 .codejourney .cj-condition-part-skipped {{ background: #f1f5f9 !important; border-left: 4px solid #64748b !important; color: #334155 !important; }}
 .codejourney .cj-condition-part-unknown {{ background: #fffbeb !important; border-left: 4px solid #d97706 !important; border-color: #fbbf24 !important; }}
 
-.cj-variables {{ display: flex; flex-direction: column; gap: 4px; }}
+.cj-variables {{ display: flex; flex-direction: column; gap: 2px; }}
 .cj-variable {{ display: flex; align-items: center; gap: 5px; flex-wrap: wrap; padding: 4px 7px; background: #edf4ff; border: 1px solid #cfddf4; border-radius: 5px; }}
 .cj-variable-name {{ font-weight: 650; }}
 .cj-pointer {{ color: #315fa8; font-weight: 700; text-decoration: none; }}
 .cj-pointer:hover {{ text-decoration: underline; }}
 .cj-alias {{ color: #657187; font-size: 12px; }}
 .cj-scalar {{ white-space: pre-wrap; overflow-wrap: anywhere; }}
-.cj-object {{ border: 1px solid #bdc9da; border-radius: 6px; padding: 5px 7px; background: #fff; margin: 4px 0 0 10px; scroll-margin: 5px; }}
-.cj-object-heading {{ display: flex; align-items: center; gap: 5px; margin: 0 0 4px; }}
+.cj-objects {{ display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; }}
+.cj-object {{ width: max-content; max-width: 100%; box-sizing: border-box; min-width: 0; border: 1px solid #bdc9da; border-radius: 6px; padding: 3px 4px; background: #fff; margin: 0; scroll-margin: 5px; }}
+.cj-table-scroll {{ max-width: 100%; overflow-x: auto; }}
+.cj-table-inner {{ min-width: max-content; max-width: 100%; }}
+.cj-object-heading {{ display: flex; align-items: center; gap: 5px; margin: 0 0 3px; }}
 .cj-object h4 {{ font-size: 12px; color: #53647c; margin: 0; }}
 .cj-object-type {{ display: inline-block; border: 1px solid #cbd5e1; border-radius: 999px; padding: 1px 7px; background: #f1f5f9; color: #334155; font-size: 11px; }}
 .cj-object pre {{ margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }}
-.cj-object-table {{ width: 100%; border-collapse: collapse; table-layout: fixed; background: #fff; color: #172033; }}
-.cj-object-table th, .cj-object-table td {{ border: 1px solid #cbd5e1; padding: 3px 5px; text-align: left; vertical-align: top; overflow-wrap: anywhere; }}
-.cj-object-table thead th {{ background: #f1f5f9; color: #334155; font-weight: 650; }}
+.cj-object-table {{ width: max-content; max-width: 100%; border-collapse: collapse; table-layout: auto; background: #fff; color: #172033; }}
+.cj-object-table th, .cj-object-table td {{ border: 1px solid #cbd5e1; padding: 2px 6px; text-align: left; vertical-align: top; overflow-wrap: anywhere; }}
+.cj-object-table th {{ white-space: nowrap; }}
+.cj-object-table thead th {{ background: #f1f5f9; color: #334155; font-weight: 650; padding-left: 6px; padding-right: 6px; }}
 .cj-object-table tbody th {{ width: 1%; white-space: nowrap; background: #f8fafc; color: #334155; font-weight: 550; }}
 .cj-object-table td {{ color: #172033; }}
 .cj-diff {{ border-left: 3px solid #6688c7; background: #f7f9fd; padding: 4px 6px; margin: 4px 0; border-radius: 4px; overflow-wrap: anywhere; }}
@@ -723,32 +814,31 @@ def render_html(result: TraceResult) -> str:
 .codejourney .cj-empty, .codejourney .cj-muted {{ color: #53647c !important; }}
 @media (max-width: 700px) {{ .cj-layout {{ grid-template-columns: 1fr; }} }}
 @media (prefers-reduced-motion: no-preference) {{
+  @keyframes cj-object-fade {{
+    from {{ opacity: 0; }}
+    to {{ opacity: 1; }}
+  }}
   @keyframes cj-step-enter {{
-    from {{ transform: translateX(6px); }}
-    to {{ transform: translateX(0); }}
+    from {{ opacity: 0; transform: translateX(4px); }}
+    to {{ opacity: 1; transform: translateX(0); }}
   }}
-  @keyframes cj-reveal {{
-    from {{ transform: translateY(3px) scale(.985); }}
-    to {{ transform: translateY(0) scale(1); }}
+  @keyframes cj-soft-enter {{
+    from {{ opacity: 0; transform: translateY(3px); }}
+    to {{ opacity: 1; transform: translateY(0); }}
   }}
-  .cj-output-state pre,
-  .cj-output-state .cj-output-empty,
-  .cj-object,
-  .cj-object-table tbody tr,
-  .cj-diff,
+  @keyframes cj-pill-enter {{
+    from {{ transform: scale(.94); }}
+    to {{ transform: scale(1); }}
+  }}
+  .cj-object {{
+    animation: cj-object-fade 180ms ease-out both;
+  }}
+  .cj-loop-stack,
   .cj-condition-card,
-  .cj-condition-part {{
-    transform-origin: 50% 50%;
-    animation: cj-reveal 180ms ease-out both;
+  .cj-condition-result,
+  .cj-diff {{
+    animation: cj-soft-enter 160ms ease-out both;
   }}
-  .cj-object-table tbody tr:nth-child(2),
-  .cj-condition-part:nth-child(2) {{ animation-delay: 20ms; }}
-  .cj-object-table tbody tr:nth-child(3),
-  .cj-condition-part:nth-child(3) {{ animation-delay: 40ms; }}
-  .cj-object-table tbody tr:nth-child(4),
-  .cj-condition-part:nth-child(4) {{ animation-delay: 60ms; }}
-  .cj-object-table tbody tr:nth-child(n+5) {{ animation-delay: 80ms; }}
-  .cj-condition-part:nth-child(n+5) {{ animation-delay: 80ms; }}
 }}
 {''.join(rules)}
 </style>
@@ -758,5 +848,4 @@ def render_html(result: TraceResult) -> str:
 {timeline_html}
 {output_card_html}
 {views_html}
-<p class="cj-muted">Educational trace, not a debugger. Code ran with this Python process's permissions; execution is not sandboxed.</p>
 </div>"""

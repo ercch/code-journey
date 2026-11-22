@@ -95,6 +95,7 @@ class LoopIteration:
     total_iterations: Optional[int]
     line_number: int
     group_id: str = ""
+    depth: int = 0
 
     @property
     def label(self) -> str:
@@ -728,6 +729,18 @@ def run_viz(code_str: str, *, max_steps: int = 500) -> TraceResult:
         )
         return TraceResult(code_str, (), max_steps, error=error)
 
+    loops_by_id = {loop.loop_id: loop for loop in analysis.loops}
+    loop_depths = {
+        loop.loop_id: sum(
+            1
+            for outer in analysis.loops
+            if outer.loop_id != loop.loop_id
+            and outer.line_number != loop.line_number
+            and outer.contains(loop.line_number)
+        )
+        for loop in analysis.loops
+    }
+
     linecache.cache[filename] = (
         len(code_str),
         None,
@@ -835,13 +848,14 @@ def run_viz(code_str: str, *, max_steps: int = 500) -> TraceResult:
                         total_iterations=loop.total_iterations,
                         line_number=loop.line_number,
                         group_id=current["group_id"],
+                        depth=loop_depths[loop.loop_id],
                     )
                 )
         active_iterations.sort(
-            key=lambda item: next(
-                loop.line_number
-                for loop in analysis.loops
-                if loop.loop_id == item.loop_id
+            key=lambda item: (
+                item.depth,
+                item.line_number,
+                item.loop_id,
             )
         )
 
