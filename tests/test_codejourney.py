@@ -243,6 +243,30 @@ def test_visualizer_initializes_at_step_one():
         ) in rendered
 
 
+def test_visualizer_includes_reduced_motion_safe_step_and_reveal_animations():
+    rendered = run_viz(
+        "items = [1, 2]\n"
+        "print(items)\n"
+        "if 1 == 1 and 2 == 2:\n"
+        "    answer = 42\n"
+    )._repr_html_()
+
+    assert "@media (prefers-reduced-motion: no-preference)" in rendered
+    assert "@keyframes cj-step-enter" in rendered
+    assert "@keyframes cj-reveal" in rendered
+    assert "from { transform: translateX(6px); }" in rendered
+    assert "from { transform: translateY(3px) scale(.985); }" in rendered
+    assert "opacity: 0; transform: translateX" not in rendered
+    assert "opacity: 0; transform: translateY" not in rendered
+    assert "transform: translateX(6px)" in rendered
+    assert "transform: translateY(3px) scale(.985)" in rendered
+    assert "animation:cj-step-enter 180ms ease-out both" in rendered
+    assert ".cj-output-state pre" in rendered
+    assert ".cj-object-table tbody tr" in rendered
+    assert ".cj-diff" in rendered
+    assert ".cj-condition-part" in rendered
+
+
 def test_ast_analysis_extracts_loop_metadata_and_known_iteration_count():
     result = run_viz("total = 0\nfor value in range(2, 5):\n    total += value\n")
 

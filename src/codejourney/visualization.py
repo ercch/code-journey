@@ -529,11 +529,11 @@ def render_html(result: TraceResult) -> str:
         )
         rules.append(
             f"#{selector_id}:checked ~ .cj-output-card .cj-output-state[data-output-index='{index}']"
-            "{display:block}"
+            "{display:block;animation:cj-step-enter 180ms ease-out both}"
         )
         rules.append(
             f"#{selector_id}:checked ~ .cj-views .cj-view[data-index='{index}']"
-            "{display:block}"
+            "{display:block;animation:cj-step-enter 180ms ease-out both}"
         )
         rules.append(
             f"#{selector_id}:checked ~ .cj-timeline label[for='{selector_id}']"
@@ -722,6 +722,34 @@ def render_html(result: TraceResult) -> str:
 .codejourney .cj-error {{ background: #fde8e8 !important; color: #8d2020 !important; }}
 .codejourney .cj-empty, .codejourney .cj-muted {{ color: #53647c !important; }}
 @media (max-width: 700px) {{ .cj-layout {{ grid-template-columns: 1fr; }} }}
+@media (prefers-reduced-motion: no-preference) {{
+  @keyframes cj-step-enter {{
+    from {{ transform: translateX(6px); }}
+    to {{ transform: translateX(0); }}
+  }}
+  @keyframes cj-reveal {{
+    from {{ transform: translateY(3px) scale(.985); }}
+    to {{ transform: translateY(0) scale(1); }}
+  }}
+  .cj-output-state pre,
+  .cj-output-state .cj-output-empty,
+  .cj-object,
+  .cj-object-table tbody tr,
+  .cj-diff,
+  .cj-condition-card,
+  .cj-condition-part {{
+    transform-origin: 50% 50%;
+    animation: cj-reveal 180ms ease-out both;
+  }}
+  .cj-object-table tbody tr:nth-child(2),
+  .cj-condition-part:nth-child(2) {{ animation-delay: 20ms; }}
+  .cj-object-table tbody tr:nth-child(3),
+  .cj-condition-part:nth-child(3) {{ animation-delay: 40ms; }}
+  .cj-object-table tbody tr:nth-child(4),
+  .cj-condition-part:nth-child(4) {{ animation-delay: 60ms; }}
+  .cj-object-table tbody tr:nth-child(n+5) {{ animation-delay: 80ms; }}
+  .cj-condition-part:nth-child(n+5) {{ animation-delay: 80ms; }}
+}}
 {''.join(rules)}
 </style>
 {selector_html}
