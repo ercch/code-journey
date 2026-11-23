@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import html
+import json
 import uuid
 from typing import Any, Optional
 
@@ -323,6 +324,47 @@ def _loop_stack_html(event: TraceEvent) -> str:
     )
 
 
+def _run_summary_html(
+    result: TraceResult,
+    events: tuple["TraceEvent", ...],
+    index: int,
+    error_index: Optional[int],
+) -> str:
+    is_end = bool(events) and index == len(events) - 1
+    is_error = error_index is not None and index >= error_index
+    if not is_end and not is_error:
+        return ""
+
+    peak_loop_depth = max(
+        (len(event.loop_iterations) for event in events),
+        default=0,
+    )
+    output_line_count = len(events[-1].output.splitlines()) if events else 0
+    details = [
+        f"{len(events)} steps",
+        f"{peak_loop_depth} loop depth",
+        f"{output_line_count} output lines",
+    ]
+    if result.error is not None and is_error:
+        line_detail = (
+            f"line {result.error.line_number}"
+            if result.error.line_number is not None
+            else "unknown line"
+        )
+        details.append(
+            f"{html.escape(result.error.type_name)} "
+            f"{html.escape(line_detail)}"
+        )
+    return (
+        '<div class="cj-run-summary" aria-label="Run summary">'
+        + "".join(
+            f'<span class="cj-run-summary-item">{detail}</span>'
+            for detail in details
+        )
+        + "</div>"
+    )
+
+
 def _view_html(
     result: TraceResult,
     event: TraceEvent,
@@ -494,7 +536,9 @@ def _view_html(
             + " steps. The displayed execution is partial.</li>"
         )
 
+    run_summary = _run_summary_html(result, events, index, error_index)
     return f"""<section class="cj-view" data-index="{index}">
+  {run_summary}
   <div class="cj-state">{_loop_stack_html(event)}{condition_html}</div>
   <div class="cj-layout">
     <section class="cj-panel"><h3>Source</h3><pre class="cj-source"><code>{line_markup}</code></pre></section>
@@ -767,6 +811,8 @@ def render_html(result: TraceResult) -> str:
 .codejourney .cj-source-line.cj-current {{ background: #fff0b3 !important; color: #172033 !important; outline: 1px solid #c49a18; }}
 .codejourney .cj-line-number {{ user-select: none; color: #5e6b7b !important; }}
 .cj-state {{ margin: 0 0 3px; }}
+.cj-run-summary {{ display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 4px; padding: 4px 6px; border: 1px solid #cbd5e1; border-radius: 5px; background: #f1f5f9; }}
+.cj-run-summary-item {{ display: inline-block; padding: 1px 5px; border-radius: 4px; background: #fff; color: #172033; font-size: 12px; }}
 .cj-badge {{ display: inline-block; background: #e8efff; border-radius: 999px; padding: 2px 7px; font-size: 12px; }}
 .cj-loop-stack {{ max-width: 100%; flex-wrap: wrap; overflow-wrap: anywhere; }}
 
