@@ -244,7 +244,7 @@ most useful for short, reviewable Python examples in Jupyter.
 
 Repository metadata currently declares **MIT**. A separate license file or
 official release wording has not been provided here as a completed claim:
-**[License text and link placeholder]**.
+**[MIT License](LICENSE)**.
 
 ## Version
 
