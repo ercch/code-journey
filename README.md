@@ -5,6 +5,8 @@ notebooks. It helps beginners inspect source-line execution, variable changes,
 collections, aliases, loop iterations, condition previews, and recognizable
 learning hazards.
 
+<img width="1280" height="891" alt="card_demo" src="https://github.com/user-attachments/assets/2e72fd37-afbd-420d-af54-ec3e35022cab" />
+
 ## Motivation
 
 Beginners often have to infer program behavior by repeatedly comparing source
