@@ -149,8 +149,30 @@ def _is_object(value: Any) -> bool:
     )
 
 
-def _variable_objects(event: TraceEvent, scope: str) -> tuple[str, str]:
+def _variable_objects(
+    event: TraceEvent,
+    scope: str,
+    previous_event: Optional["TraceEvent"] = None,
+) -> tuple[str, str]:
     aliases = {alias.name: alias.linked_to for alias in event.aliases}
+    previous_aliases = (
+        {alias.name: alias.linked_to for alias in previous_event.aliases}
+        if previous_event is not None
+        else {}
+    )
+
+    def previous_canonical_names() -> set[str]:
+        names = set()
+        for name in (previous_event.after if previous_event is not None else {}):
+            seen = set()
+            canonical = name
+            while canonical in previous_aliases and canonical not in seen:
+                seen.add(canonical)
+                canonical = previous_aliases[canonical]
+            names.add(canonical)
+        return names
+
+    previous_objects = previous_canonical_names()
 
     def canonical_name(name: str) -> str:
         seen = set()
@@ -211,8 +233,9 @@ def _variable_objects(event: TraceEvent, scope: str) -> tuple[str, str]:
             if table_html is not None
             else f"<pre>{html.escape(_value_text(value))}</pre>"
         )
+        new_class = " cj-new" if canonical not in previous_objects else ""
         objects_html.append(
-            f'<article class="cj-object" id="{object_id}">'
+            f'<article class="cj-object{new_class}" id="{object_id}">'
             '<header class="cj-object-heading">'
             f"<h4>Object {object_number}</h4>"
             f'<span class="cj-object-type">{html.escape(_object_type(value))}</span>'
@@ -225,10 +248,22 @@ def _variable_objects(event: TraceEvent, scope: str) -> tuple[str, str]:
     return "\n".join(variable_rows), "\n".join(objects_html)
 
 
-def _diffs_html(event: TraceEvent) -> str:
+def _diffs_html(
+    event: TraceEvent,
+    previous_event: Optional["TraceEvent"] = None,
+) -> str:
     if not event.variable_diffs:
         return '<p class="cj-empty">No variable changes at this step.</p>'
     cards = []
+    previous_diffs = {
+        (
+            diff.name,
+            diff.change,
+            _value_text(diff.before),
+            _value_text(diff.after),
+        )
+        for diff in (previous_event.variable_diffs if previous_event is not None else ())
+    }
     for diff in event.variable_diffs:
         detail = (
             f"Before: {_value_text(diff.before)}\n"
@@ -242,8 +277,15 @@ def _diffs_html(event: TraceEvent) -> str:
             detail += "\nChanged dictionary keys: " + _value_text(
                 diff.dictionary_keys
             )
+        fingerprint = (
+            diff.name,
+            diff.change,
+            _value_text(diff.before),
+            _value_text(diff.after),
+        )
+        new_class = " cj-new" if fingerprint not in previous_diffs else ""
         cards.append(
-            '<article class="cj-diff">'
+            f'<article class="cj-diff{new_class}">'
             f"<strong>{html.escape(diff.name)} · {html.escape(diff.change)}</strong>"
             f"<pre>{html.escape(detail)}</pre>"
             "</article>"
@@ -288,6 +330,8 @@ def _view_html(
     scope: str,
     show_error: bool,
     events: tuple["TraceEvent", ...],
+    previous_event: Optional["TraceEvent"] = None,
+    error_index: Optional[int] = None,
 ) -> str:
     source_lines = result.source.splitlines()
     line_markup_parts = []
@@ -322,7 +366,11 @@ def _view_html(
     if not line_markup:
         line_markup = '<span class="cj-empty">No source lines.</span>'
 
-    variables_html, objects_html = _variable_objects(event, f"{scope}-{index}")
+    variables_html, objects_html = _variable_objects(
+        event,
+        f"{scope}-{index}",
+        previous_event,
+    )
     iteration_text = (
         event.loop_iterations[-1].label
         if event.loop_iterations
@@ -340,6 +388,26 @@ def _view_html(
 
     if event.condition_preview is not None:
         condition = event.condition_preview
+        previous_condition = (
+            previous_event.condition_preview
+            if previous_event is not None
+            else None
+        )
+        condition_fingerprint = (
+            condition.expression,
+            condition.preview,
+            condition.result,
+        )
+        previous_fingerprint = (
+            (
+                previous_condition.expression,
+                previous_condition.preview,
+                previous_condition.result,
+            )
+            if previous_condition is not None
+            else None
+        )
+        new_class = " cj-new" if condition_fingerprint != previous_fingerprint else ""
 
         expression = html.escape(condition.expression)
         preview = html.escape(condition.preview)
@@ -377,7 +445,7 @@ def _view_html(
             )
 
         condition_html = (
-            '<div class="cj-condition-card">'
+            f'<div class="cj-condition-card{new_class}">'
             '<div class="cj-condition-heading">CONDITION</div>'
             f'<div class="cj-condition-expression">{expression}</div>'
             '<div class="cj-condition-heading">EVALUATION</div>'
@@ -388,8 +456,18 @@ def _view_html(
             + "</div></div>"
         )
 
+    previous_warnings = (
+        {
+            (warning.message, warning.line_number)
+            for warning in result.warnings
+            if warning.line_number == previous_event.line_number
+        }
+        if previous_event is not None
+        else set()
+    )
     warning_html = "".join(
-        f'<li class="cj-warning">{html.escape(warning.message)}'
+        f'<li class="cj-warning{(" cj-new" if (warning.message, warning.line_number) not in previous_warnings else "")}">'
+        + html.escape(warning.message)
         + (
             f' <span class="cj-muted">(line {warning.line_number})</span>'
             if warning.line_number is not None
@@ -402,7 +480,7 @@ def _view_html(
     error_html = ""
     if result.error is not None and show_error:
         error_html = (
-            '<li class="cj-error">'
+            f'<li class="cj-error{(" cj-new" if error_index == index else "")}">'
             + html.escape(result.error.type_name)
             + ": "
             + html.escape(result.error.message)
@@ -423,7 +501,7 @@ def _view_html(
     <section class="cj-panel">
       <h3>Variables</h3><div class="cj-variables">{variables_html}</div>
       <h3>Objects</h3><div class="cj-objects">{objects_html}</div>
-      <h3>What changed?</h3><div class="cj-diffs">{_diffs_html(event)}</div>
+      <h3>What changed?</h3><div class="cj-diffs">{_diffs_html(event, previous_event)}</div>
       <h3>Learning notes</h3><ul>{warning_html}{error_html}</ul>
     </section>
   </div>
@@ -579,17 +657,19 @@ def render_html(result: TraceResult) -> str:
         tick_label = "END" if index == count - 1 else str(index + 1)
         timeline.append(
             f'<label class="cj-tick" role="button" for="{selector_id}" '
+            f'data-step-index="{index}" '
             f'aria-label="Go to {tick_label}" title="{tick_label}">'
             f"{tick_label}</label>"
         )
-        output_content = (
-            f"<pre>{html.escape(event.output)}</pre>"
-            if event.output
-            else '<p class="cj-output-empty">No output at this step.</p>'
-        )
         output_states.append(
-            f'<div class="cj-output-state" data-output-index="{index}">'
-            f"{output_content}</div>"
+            f'<div class="cj-output-state{(" cj-new" if event.output and (index == 0 or event.output != events[index - 1].output) else "")}" '
+            f'data-output-index="{index}">'
+            + (
+                f"<pre>{html.escape(event.output)}</pre>"
+                if event.output
+                else '<p class="cj-output-empty">No output at this step.</p>'
+            )
+            + "</div>"
         )
         views.append(
             _view_html(
@@ -599,6 +679,8 @@ def render_html(result: TraceResult) -> str:
                 scope,
                 error_index is not None and index >= error_index,
                 events,
+                events[index - 1] if index > 0 else None,
+                error_index,
             )
         )
 
@@ -610,18 +692,17 @@ def render_html(result: TraceResult) -> str:
             "{display:flex}"
         )
         rules.append(
-            f"#{selector_id}:checked ~ .cj-output-card .cj-output-state[data-output-index='{index}']"
-            "{display:block;animation:cj-soft-enter 160ms ease-out both}"
+            f"#{selector_id}:checked ~ .cj-output-card "
+            f".cj-output-state[data-output-index='{index}']{{display:block}}"
         )
         rules.append(
-            f"#{selector_id}:checked ~ .cj-views .cj-view[data-index='{index}']"
-            "{display:block;animation:cj-step-enter 160ms ease-out both}"
+            f"#{selector_id}:checked ~ .cj-views "
+            f".cj-view[data-index='{index}']{{display:block}}"
         )
         rules.append(
             f"#{selector_id}:checked ~ .cj-timeline label[for='{selector_id}']"
             "{background:#315fa8 !important;color:#fff !important;"
-            "border-color:#315fa8 !important;"
-            "animation:cj-pill-enter 160ms ease-out both}"
+            "border-color:#315fa8 !important}"
         )
 
     if not events:
@@ -646,6 +727,13 @@ def render_html(result: TraceResult) -> str:
         '<section class="cj-output-card" aria-label="Output">'
         "<h3>Output</h3>"
         + output_states_html
+        + (
+            '<template class="cj-output-cumulative-final">'
+            + html.escape(events[-1].output)
+            + "</template>"
+            if events
+            else ""
+        )
         + "</section>"
     )
 
@@ -814,30 +902,17 @@ def render_html(result: TraceResult) -> str:
 .codejourney .cj-empty, .codejourney .cj-muted {{ color: #53647c !important; }}
 @media (max-width: 700px) {{ .cj-layout {{ grid-template-columns: 1fr; }} }}
 @media (prefers-reduced-motion: no-preference) {{
-  @keyframes cj-object-fade {{
-    from {{ opacity: 0; }}
-    to {{ opacity: 1; }}
-  }}
-  @keyframes cj-step-enter {{
-    from {{ opacity: 0; transform: translateX(4px); }}
-    to {{ opacity: 1; transform: translateX(0); }}
-  }}
-  @keyframes cj-soft-enter {{
+  @keyframes cj-pop-fade {{
     from {{ opacity: 0; transform: translateY(3px); }}
     to {{ opacity: 1; transform: translateY(0); }}
   }}
-  @keyframes cj-pill-enter {{
-    from {{ transform: scale(.94); }}
-    to {{ transform: scale(1); }}
-  }}
-  .cj-object {{
-    animation: cj-object-fade 180ms ease-out both;
-  }}
-  .cj-loop-stack,
-  .cj-condition-card,
-  .cj-condition-result,
-  .cj-diff {{
-    animation: cj-soft-enter 160ms ease-out both;
+  .cj-output-state.cj-new pre,
+  .cj-object.cj-new,
+  .cj-diff.cj-new,
+  .cj-condition-card.cj-new,
+  .cj-warning.cj-new,
+  .cj-error.cj-new {{
+    animation: cj-pop-fade 160ms ease-out both;
   }}
 }}
 {''.join(rules)}

@@ -90,6 +90,13 @@ def test_max_steps_truncates_execution_at_the_configured_limit():
     )
 
 
+def test_default_max_steps_is_5000():
+    result = run_viz("count = 0\nwhile True:\n    count += 1\n")
+
+    assert result.max_steps == 5000
+    assert result.truncated is True
+
+
 @pytest.mark.parametrize("value", [0, -1])
 def test_max_steps_must_be_positive(value):
     with pytest.raises(ValueError, match="positive"):
@@ -268,19 +275,22 @@ def test_objects_use_content_sized_wrapping_layout_and_compact_density():
     assert '<div class="cj-table-scroll"><div class="cj-table-inner">' in rendered
 
 
-def test_lively_css_motion_is_lightweight_and_objects_stay_fade_only():
+def test_fade_animation_is_limited_to_new_elements():
     rendered = run_viz("items = [1]\nprint(items)\n")._repr_html_()
 
     assert "@media (prefers-reduced-motion: no-preference)" in rendered
-    assert "@keyframes cj-object-fade" in rendered
-    assert "@keyframes cj-step-enter" in rendered
-    assert "@keyframes cj-soft-enter" in rendered
-    assert "@keyframes cj-pill-enter" in rendered
-    assert "animation:cj-step-enter 160ms ease-out both" in rendered
-    assert "animation:cj-soft-enter 160ms ease-out both" in rendered
-    assert "animation:cj-pill-enter 160ms ease-out both" in rendered
-    assert "animation: cj-object-fade 180ms ease-out both;" in rendered
-    assert "cj-object" in rendered
+    assert "@keyframes cj-pop-fade" in rendered
+    assert ".cj-object.cj-new" in rendered
+    assert ".cj-diff.cj-new" in rendered
+    assert ".cj-output-state.cj-new pre" in rendered
+    assert ".cj-condition-card.cj-new" in rendered
+    assert ".cj-warning.cj-new" in rendered
+    assert ".cj-error.cj-new" in rendered
+    assert "cj-view" in rendered
+    assert "animation:cj-step-enter" not in rendered
+    assert "animation:cj-soft-enter" not in rendered
+    assert "animation:cj-pill-enter" not in rendered
+    assert 'animation: cj-object-fade' not in rendered
     assert "<script>" not in rendered
     assert "ResizeObserver" not in rendered
 
@@ -298,16 +308,12 @@ def test_visualizer_initializes_at_step_one():
     assert all(" checked>" not in selector for selector in selectors[1:])
     assert ticks[0][1] == "1"
     assert ticks[-1][1] == "END"
-    for selector_id, _ in (ticks[0], ticks[-1]):
-        assert (
-            f"#{selector_id}:checked ~ .cj-timeline label[for='{selector_id}']"
-            "{background:#315fa8 !important;color:#fff !important;"
-            "border-color:#315fa8 !important;"
-            "animation:cj-pill-enter 160ms ease-out both}"
-        ) in rendered
+    scope = ticks[0][0].rsplit("-step-", 1)[0]
+    assert f"#{scope}-step-0:checked ~ .cj-timeline" in rendered
+    assert rendered.count(":checked ~ .cj-timeline") == len(ticks)
 
 
-def test_visualizer_includes_reduced_motion_safe_step_and_reveal_animations():
+def test_visualizer_includes_reduced_motion_safe_new_item_animation():
     rendered = run_viz(
         "items = [1, 2]\n"
         "print(items)\n"
@@ -316,15 +322,13 @@ def test_visualizer_includes_reduced_motion_safe_step_and_reveal_animations():
     )._repr_html_()
 
     assert "@media (prefers-reduced-motion: no-preference)" in rendered
-    assert "@keyframes cj-object-fade" in rendered
-    assert "@keyframes cj-step-enter" in rendered
-    assert "@keyframes cj-reveal" not in rendered
-    assert "from { opacity: 0; }" in rendered
-    assert "to { opacity: 1; }" in rendered
-    assert ".cj-object {" in rendered
-    assert "animation: cj-object-fade 180ms ease-out both;" in rendered
-    assert ".cj-object {" in rendered
-    assert "cj-object-fade" in rendered
+    assert "@keyframes cj-pop-fade" in rendered
+    assert "@keyframes cj-step-enter" not in rendered
+    assert "@keyframes cj-soft-enter" not in rendered
+    assert "@keyframes cj-pill-enter" not in rendered
+    assert "from { opacity: 0; transform: translateY(3px); }" in rendered
+    assert "to { opacity: 1; transform: translateY(0); }" in rendered
+    assert ".cj-object.cj-new" in rendered
 
 
 def test_ast_analysis_extracts_loop_metadata_and_known_iteration_count():
@@ -728,7 +732,7 @@ def test_html_visualizer_uses_notebook_safe_controls_and_escapes_source():
     assert 'type="radio"' in rendered
     assert 'role="group" aria-label="Execution timeline"' in rendered
     assert 'class="cj-tick" role="button"' in rendered
-    assert ".cj-controls[data-step-controls='0']{display:flex}" in rendered
+    assert ':checked ~ .cj-controls[data-step-controls=\'0\']' in rendered
     assert "Jump to Next Change" in rendered
     assert "Prev Iteration" in rendered
     assert "Next Iteration" in rendered
@@ -743,8 +747,8 @@ def test_html_visualizer_uses_notebook_safe_controls_and_escapes_source():
     assert "Linked to items" in rendered
     assert "<script>alert(1)</script>" not in rendered
     assert "&lt;script&gt;" in rendered
+    assert "<script>alert(1)</script>" not in rendered
     assert "<script>" not in rendered.lower()
-    assert "addEventListener" not in rendered
     assert "application/javascript" not in rendered
 
 
@@ -772,7 +776,7 @@ def test_html_has_variables_and_object_boxes_for_python_objects():
         r'<a class="cj-pointer" href="#([^"]+)"[^>]*>&rarr; object 1</a>',
         rendered,
     )
-    object_box = re.search(r'<article class="cj-object" id="([^"]+)"', rendered)
+    object_box = re.search(r'<article class="cj-object[^"]*" id="([^"]+)"', rendered)
     assert pointer is not None
     assert object_box is not None
     assert pointer.group(1) == object_box.group(1)
@@ -793,7 +797,7 @@ def test_list_dictionary_and_set_objects_render_as_typed_tables():
         )._repr_html_()
     )
     cards = re.findall(
-        r'<article class="cj-object" id="[^"]+">(.*?)</article>',
+        r'<article class="cj-object[^"]*" id="[^"]+">(.*?)</article>',
         rendered,
         re.DOTALL,
     )

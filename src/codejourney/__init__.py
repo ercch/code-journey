@@ -692,7 +692,7 @@ def _safe_error_message(error: BaseException) -> str:
     return "Execution raised an exception."
 
 
-def run_viz(code_str: str, *, max_steps: int = 500) -> TraceResult:
+def run_viz(code_str: str, *, max_steps: int = 5000) -> TraceResult:
     """Execute source and return a bounded, structured Python trace.
 
     This function is not a security sandbox. Submitted code runs with this
